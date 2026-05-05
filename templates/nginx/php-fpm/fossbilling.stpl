@@ -13,20 +13,49 @@ server {
     access_log  /var/log/nginx/domains/%domain%.log combined;
     access_log  /var/log/nginx/domains/%domain%.bytes bytes;
     error_log   /var/log/nginx/domains/%domain%.error.log error;
-        
-   ssl_certificate      %ssl_pem%;
-   ssl_certificate_key  %ssl_key%;
-   ssl_stapling on;
-   ssl_stapling_verify on;
-   
-   include %home%/%user%/conf/web/%domain%/nginx.hsts.conf*;
 
+    ssl_certificate      %ssl_pem%;
+    ssl_certificate_key  %ssl_key%;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+
+    include %home%/%user%/conf/web/%domain%/nginx.hsts.conf*;
+
+    # Block sensitive files BEFORE location / to prevent PHP handler bypass
+    location = /config.php {
+        return 404;
+    }
+    location ^~ /vendor/ {
+        return 404;
+    }
+    location ^~ /install/ {
+        return 404;
+    }
+    location ^~ /data/cache/ {
+        return 404;
+    }
+    location ^~ /data/log/ {
+        return 404;
+    }
+    location ^~ /data/uploads/ {
+        deny all;
+    }
+    location ~* ^/data/.*\.php$ {
+        deny all;
+    }
+    location ~ /\.(?!well-known\/) {
+        deny all;
+        return 404;
+    }
+    location ~* \.(bak|conf|inc|ini|lock|log|old|sh|sql|twig|yaml|php)$ {
+        return 404;
+    }
 
     location / {
-    #try_files $uri $uri/ /index.php;
-    rewrite ^/(.*)$ /index.php?_url=/$1;       
- 
-       location ~* ^.+\.(jpeg|jpg|png|webp|gif|bmp|ico|svg|css|js)$ {
+        #try_files $uri $uri/ /index.php;
+        rewrite ^/(.*)$ /index.php?_url=/$1;
+
+        location ~* ^.+\.(jpeg|jpg|png|webp|gif|bmp|ico|svg|css|js)$ {
             expires     max;
             fastcgi_hide_header "Set-Cookie";
         }
@@ -36,42 +65,18 @@ server {
             fastcgi_pass    %backend_lsnr%;
             fastcgi_index   index.php;
             include         /etc/nginx/fastcgi_params;
-            include     %home%/%user%/conf/web/%domain%/nginx.fastcgi_cache.conf*;         
+            include         %home%/%user%/conf/web/%domain%/nginx.fastcgi_cache.conf*;
         }
     }
 
-    # Block access to sensitive files and return 404 to make it indistinguishable from a missing file
-    location ~* .(bak|conf|inc|ini|lock|log|old|sh|sql|twig|yaml|php)$ {
-		return 404;
-	}
-    
-    # Disable PHP execution in data and uploads, block public access to log and cache folders
-    location ^~ /data/.*\.php$ {
-        deny all;
+    location ~* ^/(css|img|js|flv|swf|download)/(.+)$ {
+        expires off;
+        proxy_no_cache 1;
+        proxy_cache_bypass 1;
     }
-    location ^~ /data/uploads/.*\.php$ { 
-        deny all;   
-    }
-    location ^~ /data/cache/ {
-        return 404;
-    }
-    location ^~ /data/log/ {
-        return 404;
-    }
-    
-     location ~* ^/(css|img|js|flv|swf|download)/(.+)$ {
-         expires off;
-         proxy_no_cache 1;
-         proxy_cache_bypass 1;
-     }
 
     location /error/ {
-       alias   %home%/%user%/web/%domain%/document_errors/;
-    }
-
-    location ~ /\.(?!well-known\/) { 
-       deny all; 
-       return 404;
+        alias   %home%/%user%/web/%domain%/document_errors/;
     }
 
     location /vstats/ {
